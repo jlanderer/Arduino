@@ -1,0 +1,151 @@
+// Keywords:
+// gimbal lock
+// quaternions
+// Calibration at rest
+// Dead reckoning
+// 3-2-1 Euler Angles & Rotational Kinematics
+// Difference equation low-pass filter
+// I2C Serial Communication Protocol
+
+// 3.3 V, GND, SCL/SDA, errthing else grounded, even 3.3 OUT
+
+//  Process:
+//  0. Init sensor & de-bias gyro to negate drift
+//  1. Get raw data, automatically factor in bias and 250 DPS multiplication factor for gyro
+//  2. Low-pass filter for mag and accel
+//  3. determine heading via each parameter, complimentary filter & respective weight
+//  4. my old friend Mr.Serial.Print()
+//  5. Profit
+//  6. delay
+
+// complimentary filter stuff --> heading = [nan nan nan] so ixnay all of it for now
+
+#include <Wire.h>
+#include <MPU9250_asukiaaa.h>    // https://github.com/asukiaaa/MPU9250_asukiaaa
+#include <BasicLinearAlgebra.h>  // https://github.com/tomstewart89/BasicLinearAlgebra
+
+// Declare global objects and vars
+using namespace BLA;   // For linear algebra
+MPU9250_asukiaaa imu;  // sensor obj
+float gX,gY,gZ,gX_filt,gY_filt,gZ_filt;
+float g_km1[3] = {0.0,0.0,0.0};
+float g_filt_km1[3] = {0.0,0.0,0.0};
+float omega_c = 20.0; // Cutoff frequency for filtering purposes
+float psi = 0.0;
+float theta = 0.0;
+float phi = 0.0;
+float yaw = 0;
+float pitch = 0;
+float roll = 0;
+float bias[3];
+
+
+void setup() {
+  // Begin serial comm & wake up sensor
+  Serial.begin(115200);
+  Wire.begin();
+  imu.setWire(&Wire);
+  imu.beginGyro(GYRO_FULL_SCALE_250_DPS);  // This mode determines scale factor of gyro data grab
+  
+  // debias to get rid of steady-state error
+  for (int i = 0; i < 15000; i++) {
+    imu.gyroUpdate();
+    bias[0] += imu.gyroX()/131.0;
+    bias[1] += imu.gyroY()/131.0;
+    bias[2] += imu.gyroZ()/131.0;
+  }
+  bias[0] /= 500.0;
+  bias[1] /= 500.0;
+  bias[2] /= 500.0;  // avg
+}
+
+void loop() {
+  int T = 50;
+  // Get data
+  if (~imu.gyroUpdate()){
+    gX = (imu.gyroX() - bias[0])/131.0;
+    gY = (imu.gyroY() - bias[1])/131.0;
+    gZ = (imu.gyroZ() - bias[2])/131.0;
+  // data from gyro needs to be divided by scale factor 131 bc of I2C n bits n stuff (grabbed from datasheet 250DPS row)
+  //https://invensense.tdk.com/wp-content/uploads/2015/02/PS-MPU-9250A-01-v1.1.pdf
+   }
+
+
+   
+// imu.gyroUpdate();
+// Serial.print(imu.gyroX());
+// Serial.print(",");
+// Serial.print(imu.gyroY());
+// Serial.print(",");
+// Serial.println(imu.gyroZ());
+
+
+  // Serial.print(gX);
+  // Serial.print(",");
+  // Serial.print(gY);
+  // Serial.print(",");
+  // Serial.println(gZ);
+
+// gX_filt = LPF(gX_km1,gX,omega_c,T);
+// gY_filt = LPF(gY_km1,gY,omega_c,T);
+// gZ_filt = LPF(gZ_km1,gZ,omega_c,T);
+
+// float LPF(x_km1,x,omega_c,T){
+
+//   float x_filt = (1.0-omega_c*T)*x_km1 + omega_c*T*x_km1;
+//   float x_filt_km1 = x_filt;
+//   x_km1 = x;
+
+//   return x_filt;
+
+// }
+
+  // g_filt[1] = (1.0-omega_c*T)*g_km1[1] + omega_c*T*g_km1[1];
+  // g_filt_km1[1] = g_filt[1];
+  // g_km1[1] = g[1];
+
+  // g_filt[2] = (1.0-omega_c*T)*g_km1[2] + omega_c*T*g_km1[2];
+  // g_filt_km1[2] = g_filt[2];
+  // g_km1[2] = g[2];
+
+
+
+  // init stuff for matrix math
+
+
+
+  // Matrix<3> rates = { g[0], g[1], g[2] };
+  // Matrix<3, 3> A = { -sin(theta), 0.0, 1.0, sin(phi) * cos(theta), cos(phi), 0.0, cos(phi) * cos(theta), -sin(phi), 0.0 };
+  // auto A_decomp = A;
+  // auto decomp = LUDecompose(A_decomp);
+  // Matrix<3> EulerAngle = LUSolve(decomp, rates);
+
+
+  // Rotational Differential Kinematics Recap
+  // 1 Euler angle rates(phidot,psidot,thetadot) = A(phi,psi,theta)^-1*gyro rates
+  // 2. Integrate to find Euler angles
+
+  //psi += EulerAngle(0) * (T);    // yaw
+  //theta += EulerAngle(1) * (T);  // roll
+  //phi += EulerAngle(2) * (T);    // pitch
+
+    yaw = yaw + T * gZ;
+    pitch = pitch + T * gX;
+    roll = roll + T * gY;
+
+    Serial.print(yaw);
+    Serial.print(",");
+    Serial.print(pitch);
+    Serial.print(",");
+    Serial.println(roll);
+
+
+
+  // Serial.print(psi);
+  // Serial.print(",");
+  // Serial.print(theta);
+  // Serial.print(",");
+  // Serial.println(phi);
+
+  delay(T);
+}
